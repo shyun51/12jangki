@@ -1,0 +1,55 @@
+{
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "database": {
+    "rules": {
+      "rooms": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$roomId": {
+          "players": {
+            "$playerId": {
+              ".write": "auth != null && ($playerId === auth.uid || !data.exists())"
+            }
+          },
+          "chat": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        }
+      },
+      "games": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "$gameId": {
+          "moves": {
+            ".write": "auth != null && root.child('games').child($gameId).child('players').child(auth.uid).exists()"
+          },
+          "votes": {
+            "$voteId": {
+              ".write": "auth != null && $voteId === auth.uid"
+            }
+          }
+        }
+      },
+      "users": {
+        "$uid": {
+          ".read": "auth != null",
+          ".write": "auth != null && $uid === auth.uid"
+        }
+      }
+    }
+  }
+} 

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>십이장기 3×4</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap">
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <h1>십이장기</h1>
+  
+  <!-- 게임 모드 선택 화면 -->
+  <div id="modeSelection" class="mode-selection">
+    <h2>게임 모드 선택</h2>
+    <button id="multiplayerBtn" class="mode-btn">멀티플레이 (1대1)</button>
+    <button id="singleplayerBtn" class="mode-btn">싱글플레이 (AI 대전)</button>
+    <button id="onlineBtn" class="mode-btn">온라인 플레이</button>
+  </div>
+
+  <!-- 게임 화면 -->
+  <div id="gameScreen" class="hidden">
+    <div id="status">Player 1 차례</div>
+
+    <!-- 3 × 4 보드 -->
+    <div id="board" class="board"></div>
+
+    <h3>Player 1 Reserve</h3>
+    <div id="reserve1" class="reserve" data-owner="1"></div>
+    <h3>Player 2 Reserve</h3>
+    <div id="reserve2" class="reserve" data-owner="2"></div>
+
+    <!-- 게임 종료 오버레이 -->
+    <div id="gameOver" class="overlay hidden">
+      <div class="dialog">
+        <h2 id="winnerMsg"></h2>
+        <button id="restartBtn">재시작</button>
+      </div>
+    </div>
+
+    <div id="controls">
+      <button id="restartBtn">새 게임</button>
+      <button id="undoBtn">되돌리기</button>
+      <button id="backToMenuBtn">메뉴로 돌아가기</button>
+    </div>
+  </div>
+
+  <script src="js/board.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ai.js"></script>
+  <script src="js/online.js"></script>
+  <script src="js/mode.js"></script>
+</body>
+</html>
+
+<!-- 1)시작시 게임 모드 선택 화면 ( 멀티플레이, 싱글플레이, 온라인 )
+ 2)멀티플레이는 한 기기 안에서 두명의 플레이어가. 현재 유지지
+  싱글플레이는 혼자 AI와 대결 난이도 상 중 하로 구분 가능.
+  온라인은 서로 다른 곳에 있는 두 플레이어가 대결 (마지막에)
+ 3) 각 말은, 자(후),상, 장, 왕이 있음. 각 말 마다 갈 수 있는 방향을 아이콘에 표기할것
+ 4) 먹은 말 재드롭 시, 각자의 진영이 아닌 가운데 6칸에만 둘 수 있음.
+ 5) 각자 왕이 상대 진형에서 한 턴 살아있으면, 그 다음턴에 승리.-->
+
+
+ <!--
+  온라인 플레이 추가 기능
+  1) 친구랑 1ㄷ1 모드 or 단체 모드 선택 가능
+  2) 현재 게임: 1ㄷ1모드
+  3) 단체모드 : 1player팀 5명, 2player팀 5명 총 10명 참가
+  & 말 놓기 전, 각 팀에 플레이어들끼리 간단한 클릭으로 뭘 놓을 지 투표
+  4) 투표 후 결과 반영해 말 놓기
+  5) 단체모드 = 채팅가능
+
+  *추후 개발 방향
+  최대 100명 (50명,50명) 참가 가능함
+ -->
+
