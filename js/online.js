@@ -1,180 +1,168 @@
+/* online.js = 온라인으로 대전하기 위한 코드드 */
+
+// Firebase 설정
+const firebaseConfig = {
+  // Firebase 콘솔에서 가져온 설정값을 여기에 입력
+};
+
+// Firebase 초기화
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+const auth = firebase.auth();
+
+// 온라인 게임 관련 변수
+let currentRoom = null;
+let currentGame = null;
+let currentUser = null;
+let isTeamMode = false;
+let currentTeam = null;
+
 class OnlineGame {
   constructor() {
+    this.rooms = {};
     this.currentRoom = null;
-    this.playerId = null;
-    this.isHost = false;
+    this.currentUser = null;
     this.gameState = null;
-    this.initializeEventListeners();
+    this.teamVotes = {};
   }
 
-  initializeEventListeners() {
-    // 방 생성 버튼
-    document.getElementById('createRoomBtn').addEventListener('click', () => this.createRoom());
-    
-    // 방 참가 버튼
-    document.getElementById('joinRoomBtn').addEventListener('click', () => this.joinRoom());
-    
-    // 채팅 전송
-    document.getElementById('sendChatBtn').addEventListener('click', () => this.sendChat());
-  }
-
-  async createRoom() {
-    const roomName = document.getElementById('roomNameInput').value;
-    if (!roomName) {
-      alert('방 이름을 입력해주세요.');
-      return;
+  // 사용자 인증
+  async signIn() {
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      const result = await auth.signInWithPopup(provider);
+      this.currentUser = result.user;
+      return true;
+    } catch (error) {
+      console.error('로그인 실패:', error);
+      return false;
     }
+  }
 
+  // 방 생성
+  async createRoom(roomName, isTeamGame = false) {
     const roomRef = database.ref('rooms').push();
     const roomData = {
       name: roomName,
-      host: auth.currentUser.uid,
-      players: {
-        [auth.currentUser.uid]: {
-          name: auth.currentUser.displayName || 'Player 1',
-          team: 1
-        }
-      },
-      gameState: null,
-      createdAt: Date.now()
+      created: firebase.database.ServerValue.TIMESTAMP,
+      status: 'waiting',
+      isTeamMode: isTeamGame,
+      players: {},
+      maxPlayers: isTeamGame ? 10 : 2
     };
-
-    try {
-      await roomRef.set(roomData);
+    
+    return roomRef.set(roomData).then(() => {
       this.currentRoom = roomRef.key;
-      this.isHost = true;
-      this.setupRoomListeners();
-      this.updateRoomUI();
-    } catch (error) {
-      console.error('방 생성 실패:', error);
-      alert('방 생성에 실패했습니다.');
-    }
+      return this.joinRoom(this.currentRoom);
+    });
   }
 
-  async joinRoom() {
-    const roomId = document.getElementById('roomIdInput').value;
-    if (!roomId) {
-      alert('방 번호를 입력해주세요.');
-      return;
-    }
-
+  // 방 참가
+  async joinRoom(roomId) {
     const roomRef = database.ref(`rooms/${roomId}`);
     const snapshot = await roomRef.once('value');
-    const roomData = snapshot.val();
+    const room = snapshot.val();
 
-    if (!roomData) {
-      alert('존재하지 않는 방입니다.');
-      return;
+    if (room.status === 'playing') {
+      throw new Error('이미 게임이 진행 중입니다.');
     }
-
-    if (Object.keys(roomData.players).length >= 2) {
-      alert('방이 가득 찼습니다.');
-      return;
+    
+    const playerCount = Object.keys(room.players || {}).length;
+    if (playerCount >= room.maxPlayers) {
+      throw new Error('방이 가득 찼습니다.');
     }
-
-    try {
-      await roomRef.child('players').child(auth.currentUser.uid).set({
-        name: auth.currentUser.displayName || 'Player 2',
-        team: 2
-      });
-
-      this.currentRoom = roomId;
-      this.isHost = false;
-      this.setupRoomListeners();
-      this.updateRoomUI();
-    } catch (error) {
-      console.error('방 참가 실패:', error);
-      alert('방 참가에 실패했습니다.');
-    }
+    
+    await roomRef.child(`players/${this.currentUser.uid}`).set({
+      name: this.currentUser.displayName || '플레이어',
+      joined: firebase.database.ServerValue.TIMESTAMP,
+      team: isTeamMode ? (playerCount < 5 ? 'team1' : 'team2') : null
+    });
+    return true;
   }
 
-  setupRoomListeners() {
-    const roomRef = database.ref(`rooms/${this.currentRoom}`);
-    
-    // 게임 상태 변경 감지
-    roomRef.child('gameState').on('value', (snapshot) => {
-      this.gameState = snapshot.val();
-      this.updateGameUI();
-    });
-
-    // 플레이어 변경 감지
-    roomRef.child('players').on('value', (snapshot) => {
-      const players = snapshot.val();
-      this.updatePlayersUI(players);
-    });
-
-    // 채팅 메시지 감지
-    roomRef.child('messages').on('child_added', (snapshot) => {
-      const message = snapshot.val();
-      this.addChatMessage(message);
+  // 게임 상태 동기화
+  syncGameState(roomId, gameState) {
+    const roomRef = database.ref(`rooms/${roomId}`);
+    roomRef.update({
+      gameState: gameState
     });
   }
 
-  async sendChat() {
-    const chatInput = document.getElementById('chatInput');
-    const message = chatInput.value.trim();
-    
-    if (!message) return;
-
-    const messageData = {
-      sender: auth.currentUser.uid,
-      senderName: auth.currentUser.displayName || 'Player',
-      text: message,
-      timestamp: Date.now()
-    };
-
-    try {
-      await database.ref(`rooms/${this.currentRoom}/messages`).push(messageData);
-      chatInput.value = '';
-    } catch (error) {
-      console.error('메시지 전송 실패:', error);
-    }
+  // 채팅 메시지 전송
+  async sendChatMessage(roomId, message, type = 'all') {
+    const chatRef = database.ref(`rooms/${roomId}/chat`).push();
+    await chatRef.set({
+      userId: this.currentUser.uid,
+      userName: this.currentUser.displayName || '플레이어',
+      message: message,
+      type: type,
+      timestamp: firebase.database.ServerValue.TIMESTAMP
+    });
   }
 
-  addChatMessage(message) {
-    const chatMessages = document.getElementById('chatMessages');
-    const messageElement = document.createElement('div');
-    messageElement.className = 'chat-message';
-    messageElement.innerHTML = `
-      <span class="sender">${message.senderName}:</span>
-      <span class="text">${message.text}</span>
-    `;
-    chatMessages.appendChild(messageElement);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+  // 팀 투표
+  async voteForMove(roomId, move) {
+    const roomRef = database.ref(`rooms/${roomId}`);
+    const team = this.currentRoom.players[this.currentUser.uid].team;
+    const voteRef = roomRef.child(`teamVotes/team${team}/${this.currentUser.uid}`);
+    
+    await voteRef.set({
+      move: move,
+      timestamp: firebase.database.ServerValue.TIMESTAMP,
+      team: team
+    });
   }
 
-  updateRoomUI() {
-    document.getElementById('modeSelection').classList.add('hidden');
-    document.getElementById('onlineScreen').classList.remove('hidden');
-  }
-
-  updateGameUI() {
-    if (!this.gameState) return;
+  // 투표 결과 확인
+  async getVoteResult(roomId, team) {
+    const snapshot = await database.ref(`rooms/${roomId}/teamVotes/team${team}`).once('value');
+    const votes = snapshot.val() || {};
     
-    // 게임 보드 업데이트
-    const board = document.getElementById('onlineBoard');
-    board.innerHTML = '';
-    
-    // 게임 상태에 따라 보드 렌더링
-    // TODO: 게임 보드 렌더링 로직 구현
-  }
-
-  updatePlayersUI(players) {
-    const playerList = document.createElement('div');
-    playerList.className = 'player-list';
-    
-    Object.entries(players).forEach(([id, player]) => {
-      const playerElement = document.createElement('div');
-      playerElement.className = 'player';
-      playerElement.textContent = `${player.name} (Team ${player.team})`;
-      playerList.appendChild(playerElement);
+    // 가장 많은 표를 받은 이동 선택
+    const moveCounts = {};
+    Object.values(votes).forEach(vote => {
+      const moveKey = JSON.stringify(vote.move);
+      moveCounts[moveKey] = (moveCounts[moveKey] || 0) + 1;
     });
 
-    const roomList = document.getElementById('roomList');
-    roomList.innerHTML = '';
-    roomList.appendChild(playerList);
+    const maxVotes = Math.max(...Object.values(moveCounts));
+    const winningMoves = Object.entries(moveCounts)
+      .filter(([_, count]) => count === maxVotes)
+      .map(([move]) => JSON.parse(move));
+
+    return winningMoves[Math.floor(Math.random() * winningMoves.length)];
+  }
+
+  // 게임 시작
+  async startGame(roomId) {
+    const roomRef = database.ref(`rooms/${roomId}`);
+    await roomRef.update({
+      status: 'playing',
+      gameState: {
+        board: initializeBoard(),
+        currentTurn: 'team1',
+        lastMove: null
+      }
+    });
+  }
+
+  // 게임 종료
+  async endGame(roomId, winner) {
+    const roomRef = database.ref(`rooms/${roomId}`);
+    await roomRef.update({
+      status: 'finished',
+      winner: winner
+    });
   }
 }
 
 // 온라인 게임 인스턴스 생성
-const onlineGame = new OnlineGame(); 
+const onlineGame = new OnlineGame();
+
+// 이벤트 리스너 등록
+document.getElementById('onlineBtn').addEventListener('click', async () => {
+  if (await onlineGame.signIn()) {
+    // 온라인 게임 UI 표시
+    showOnlineGameUI();
+  }
+});
